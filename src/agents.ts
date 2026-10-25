@@ -321,7 +321,8 @@ export const agents: Record<AgentType, AgentConfig> = {
     name: 'eve',
     displayName: 'Eve',
     skillsDir: 'agent/skills',
-    globalSkillsDir: undefined,
+    // Eve sandboxes seed globally installed skill packages from this shared directory.
+    globalSkillsDir: join(home, '.agents', 'skills'),
     detectInstalled: async () => {
       const cwd = process.cwd();
       return (
@@ -798,7 +799,8 @@ export const agents: Record<AgentType, AgentConfig> = {
     name: 'promptscript',
     displayName: 'PromptScript',
     skillsDir: '.agents/skills',
-    globalSkillsDir: undefined,
+    // PromptScript discovers skills in the shared universal skills directory.
+    globalSkillsDir: join(home, '.agents', 'skills'),
     showInUniversalPrompt: false,
     detectInstalled: async () => {
       return (

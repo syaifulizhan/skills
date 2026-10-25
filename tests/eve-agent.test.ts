@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { detectInstalledAgents, getEveSubagents } from '../src/agents.ts';
+import { homedir, tmpdir } from 'node:os';
+import { agents, detectInstalledAgents, getEveSubagents } from '../src/agents.ts';
 import {
   getAgentBaseDir,
   getEveSubagentSkillsDir,
   installBlobSkillForAgent,
+  installRemoteSkillForAgent,
   installSkillForAgent,
   isSkillInstalled,
   listInstalledSkills,
@@ -40,6 +41,111 @@ async function makeSourceSkill(name: string): Promise<{ root: string; skillDir: 
 }
 
 describe('Eve agent support', () => {
+  it('installs global packaged skills into the shared skills directory as copies', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'skills-eve-global-'));
+    const skillRoot = await mkdtemp(join(tmpdir(), 'skills-eve-global-source-'));
+    const skillDir = join(skillRoot, 'global-skill');
+    const previousGlobalDir = agents.eve.globalSkillsDir;
+    expect(previousGlobalDir).toBe(join(homedir(), '.agents', 'skills'));
+    agents.eve.globalSkillsDir = join(root, '.agents', 'skills');
+    await mkdir(join(skillDir, 'references'), { recursive: true });
+    await writeFile(
+      join(skillDir, 'SKILL.md'),
+      '---\nname: global-skill\ndescription: Global Eve skill\nlicense: MIT\n---\n# Global\n',
+      'utf-8'
+    );
+    await writeFile(join(skillDir, 'references', 'guide.md'), '# Guide\n', 'utf-8');
+
+    try {
+      const result = await installSkillForAgent(
+        { name: 'global-skill', description: 'Global Eve skill', path: skillDir },
+        'eve',
+        { global: true, cwd: root }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.mode).toBe('copy');
+      expect(result.path).toBe(join(root, '.agents', 'skills', 'global-skill'));
+      expect(await readFile(join(result.path, 'SKILL.md'), 'utf-8')).toContain('license: MIT');
+      expect(await readFile(join(result.path, 'references', 'guide.md'), 'utf-8')).toContain(
+        '# Guide'
+      );
+    } finally {
+      agents.eve.globalSkillsDir = previousGlobalDir;
+      await rm(root, { recursive: true, force: true });
+      await rm(skillRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('installs global remote Eve skills in the packaged SKILL.md layout', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'skills-eve-global-remote-'));
+    const previousGlobalDir = agents.eve.globalSkillsDir;
+    agents.eve.globalSkillsDir = join(root, '.agents', 'skills');
+
+    try {
+      const result = await installRemoteSkillForAgent(
+        {
+          name: 'remote-skill',
+          description: 'Remote skill',
+          installName: 'remote-skill',
+          content: '---\nname: remote-skill\ndescription: Remote skill\n---\n# Remote\n',
+          sourceUrl: 'https://example.com/skill',
+          providerId: 'test',
+          sourceIdentifier: 'test',
+        },
+        'eve',
+        { global: true, cwd: root }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.mode).toBe('copy');
+      expect(result.path).toBe(join(root, '.agents', 'skills', 'remote-skill'));
+      expect(await readFile(join(result.path, 'SKILL.md'), 'utf-8')).toContain(
+        'description: Remote skill'
+      );
+    } finally {
+      agents.eve.globalSkillsDir = previousGlobalDir;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('installs global blob packages with supporting files in the shared skills directory', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'skills-eve-global-blob-'));
+    const previousGlobalDir = agents.eve.globalSkillsDir;
+    agents.eve.globalSkillsDir = join(root, '.agents', 'skills');
+
+    try {
+      const result = await installBlobSkillForAgent(
+        {
+          installName: 'blob-global-skill',
+          files: [
+            {
+              path: 'SKILL.md',
+              contents:
+                '---\nname: blob-global-skill\ndescription: Blob global skill\n---\n# Blob\n',
+            },
+            { path: 'references/guide.md', contents: '# Guide\n' },
+          ],
+        },
+        'eve',
+        { global: true, cwd: root }
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.mode).toBe('copy');
+      expect(result.path).toBe(join(root, '.agents', 'skills', 'blob-global-skill'));
+      expect(await readFile(join(result.path, 'SKILL.md'), 'utf-8')).toContain(
+        'description: Blob global skill'
+      );
+      expect(await readFile(join(result.path, 'references', 'guide.md'), 'utf-8')).toContain(
+        '# Guide'
+      );
+    } finally {
+      agents.eve.globalSkillsDir = previousGlobalDir;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('detects an Eve project from agent/ and the eve package dependency', async () => {
     const projectDir = await makeEveProject();
     const previousCwd = process.cwd();

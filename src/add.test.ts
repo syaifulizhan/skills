@@ -175,6 +175,38 @@ Instructions here.
     expect(lock.skills['my-skill'].source).toBe(testDir);
   });
 
+  it('installs globally for Eve and PromptScript through the shared skills directory', () => {
+    const sourceDir = join(testDir, 'source');
+    const skillDir = join(sourceDir, 'skills', 'global-shared-skill');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, 'SKILL.md'),
+      '---\nname: global-shared-skill\ndescription: Shared global skill\n---\n# Shared\n'
+    );
+
+    const home = join(testDir, 'home');
+    const targetDir = join(testDir, 'project');
+    mkdirSync(home, { recursive: true });
+    mkdirSync(targetDir, { recursive: true });
+
+    const result = runCli(
+      ['add', sourceDir, '-y', '-g', '--agent', 'eve', 'promptscript'],
+      targetDir,
+      {
+        ...noDetectedAgentEnv,
+        HOME: home,
+        USERPROFILE: home,
+      }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Done!');
+    expect(result.stdout).not.toContain('does not support global skill installation');
+    expect(existsSync(join(home, '.agents', 'skills', 'global-shared-skill', 'SKILL.md'))).toBe(
+      true
+    );
+  });
+
   it('creates the project symlink for an explicitly selected non-universal agent', () => {
     const sourceDir = join(testDir, 'source');
     const skillDir = join(sourceDir, 'skills', 'kiro-skill');
